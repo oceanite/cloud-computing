@@ -1,0 +1,78 @@
+version: '3.9'
+
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: strongpass
+      MYSQL_DATABASE: wp_db
+    volumes:
+      - ./dbdata:/var/lib/mysql
+    networks:
+      - app-network
+
+  wordpress:
+    image: wordpress:php8.0-fpm-alpine
+    deploy:
+      replicas: 2
+    restart: unless-stopped
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: root
+      WORDPRESS_DB_PASSWORD: strongpass
+      WORDPRESS_DB_NAME: wp_db
+    volumes:
+      - ./wp_data:/var/www/html
+    networks:
+      - app-network
+
+  nginx:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    depends_on:
+      - wordpress
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx-lb-conf:/etc/nginx/conf.d
+      - ./wp_data:/var/www/html
+    networks:
+      - app-network
+
+  backup:
+    image: fradelg/mysql-cron-backup
+    restart: unless-stopped
+    environment:
+      MYSQL_HOST: db
+      MYSQL_USER: root
+      MYSQL_PASSWORD: strongpass
+      MYSQL_DATABASE: wp_db
+      CRON_TIME: "*/30 * * * *"
+      MYSQL_DUMP_FREQ: 30
+    volumes:
+      - ./backup:/backup
+    networks:
+      - app-network
+
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - app-network
+
+  grafana:
+    image: grafana/grafana-enterprise
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./monitoring/grafana:/var/lib/grafana
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
